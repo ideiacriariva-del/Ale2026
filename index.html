@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f2a1d">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Ale2026 – Jogo do Miquinho</title>
+<style>
+:root{--mata:#0f2a1d;--folha:#1d4a32;--banana:#f5c542;--coco:#6b3f1d;--flor:#e0457b;--creme:#f3e9d2}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;background:var(--mata);color:var(--creme);font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif}
+main{max-width:480px;margin:0 auto;padding:max(12px,env(safe-area-inset-top)) 14px max(16px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:12px;min-height:100vh}
+header{display:flex;align-items:center;gap:8px}
+h1{margin:0;font-size:26px;flex:1;letter-spacing:.5px;color:var(--banana)}
+.mini{background:var(--folha);color:var(--creme);border:0;border-radius:12px;padding:9px 12px;font:inherit;font-size:14px}
+.saldo{display:flex;justify-content:space-between;align-items:baseline;background:var(--folha);border-radius:16px;padding:12px 16px}
+.saldo b{font-size:30px;color:var(--banana)}
+#quem{font-size:13px;opacity:.8}
+#reels{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;background:var(--coco);padding:10px;border-radius:22px;border:4px solid var(--banana)}
+.reel{display:grid;gap:8px}
+.cell{aspect-ratio:1;display:grid;place-items:center;font-size:clamp(46px,16vw,72px);background:var(--creme);border-radius:14px;transition:transform .15s,background .15s}
+.cell.win{background:var(--banana);transform:scale(1.07)}
+.cell.roda{filter:blur(1.5px)}
+#msg{min-height:28px;text-align:center;font-size:19px;font-weight:700}
+#msg.ganhou{color:var(--banana)}
+.ctrl{display:grid;grid-template-columns:56px 1fr 56px;gap:10px;align-items:center;text-align:center}
+.ctrl button{height:56px;border:0;border-radius:16px;background:var(--folha);color:var(--creme);font-size:28px}
+.ctrl b{display:block;font-size:24px}
+#spin{height:68px;border:0;border-radius:20px;background:var(--flor);color:#fff;font:700 24px inherit;letter-spacing:1px}
+#spin:disabled,.ctrl button:disabled{opacity:.45}
+#free{height:50px;border:2px dashed var(--banana);background:none;color:var(--banana);border-radius:16px;font:inherit;font-size:17px}
+.aviso{font-size:12px;opacity:.65;text-align:center;margin:auto 0 0}
+dialog{border:0;border-radius:20px;background:var(--creme);color:var(--mata);width:min(92vw,400px);padding:20px}
+dialog::backdrop{background:#000a}
+dialog h2{margin:0 0 12px}
+dialog input{width:100%;padding:12px;margin:5px 0;border-radius:12px;border:2px solid var(--folha);font:inherit;font-size:16px}
+dialog .row{display:flex;gap:8px;margin-top:10px}
+dialog button{flex:1;padding:12px;border:0;border-radius:12px;background:var(--folha);color:var(--creme);font:inherit}
+dialog button.sec{background:#0002;color:var(--mata)}
+ol{padding-left:22px;margin:0}li{padding:6px 0;display:flex;justify-content:space-between}
+#erro{color:#b00020;font-size:14px;min-height:18px}
+@media (prefers-reduced-motion:reduce){.cell{transition:none}}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>🐒 Ale2026</h1>
+    <button class="mini" id="btnRank" aria-label="Ranking">🏆</button>
+    <button class="mini" id="btnLogin">Entrar</button>
+  </header>
+  <div class="saldo"><span>Moedas<br><small id="quem">Jogando sem login</small></span><b><span id="saldo">1000</span> 🪙</b></div>
+  <div id="reels" aria-live="off"></div>
+  <div id="msg">Ponha o miquinho para jogar!</div>
+  <div class="ctrl"><button id="minus" aria-label="Diminuir aposta">−</button><div>Aposta<b id="bet">10</b></div><button id="plus" aria-label="Aumentar aposta">+</button></div>
+  <button id="spin">GIRAR</button>
+  <button id="free" hidden>Resgatar 500 moedas grátis</button>
+  <p class="aviso">Jogo de diversão com moedas fictícias. Não vale dinheiro e não há depósito nem saque.</p>
+</main>
+
+<dialog id="dLogin">
+  <h2>Entrar ou criar conta</h2>
+  <input id="nome" placeholder="Apelido (só para criar conta)" autocomplete="nickname">
+  <input id="email" type="email" placeholder="E-mail" autocomplete="email">
+  <input id="senha" type="password" placeholder="Senha (mín. 6)" autocomplete="current-password">
+  <div id="erro"></div>
+  <div class="row"><button id="bEntrar">Entrar</button><button id="bCriar">Criar conta</button></div>
+  <div class="row"><button class="sec" id="bSair" hidden>Sair da conta</button><button class="sec" id="bFechar">Fechar</button></div>
+</dialog>
+<dialog id="dRank"><h2>🏆 Maiores ganhos</h2><ol id="lista"></ol><div class="row"><button class="sec" onclick="dRank.close()">Fechar</button></div></dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const SYM=[['🍌',30],['🥥',24],['🌴',18],['🌺',12],['💎',7],['🐒',9]];
+const PAGA={'🍌':5,'🥥':8,'🌴':12,'🌺':20,'💎':50,'🐒':100}; // 🐒 é coringa
+const LINHAS=[[0,0,0],[1,1,1],[2,2,2],[0,1,2],[2,1,0]];
+const BETS=[10,20,50,100,200];
+const TOTAL=SYM.reduce((a,s)=>a+s[1],0);
+const cfg=window.ALE_CONFIG||{};
+const sb=(cfg.SUPABASE_URL&&cfg.SUPABASE_ANON_KEY&&window.supabase)?supabase.createClient(cfg.SUPABASE_URL,cfg.SUPABASE_ANON_KEY):null;
+
+let saldo=+(localStorage.getItem('ale_saldo')||1000),melhor=+(localStorage.getItem('ale_melhor')||0),bi=0,girando=false,user=null;
+const cells=[];
+for(let c=0;c<3;c++){const col=document.createElement('div');col.className='reel';cells[c]=[];
+  for(let r=0;r<3;r++){const d=document.createElement('div');d.className='cell';d.textContent=sorteia();col.appendChild(d);cells[c][r]=d}
+  $('reels').appendChild(col)}
+
+function sorteia(){let n=Math.random()*TOTAL;for(const[e,w]of SYM){if((n-=w)<0)return e}return SYM[0][0]}
+function render(){$('saldo').textContent=saldo;$('bet').textContent=BETS[bi];
+  $('spin').disabled=girando||saldo<BETS[bi];$('minus').disabled=girando||bi===0;$('plus').disabled=girando||bi===BETS.length-1;
+  $('free').hidden=saldo>=BETS[0]||girando;
+  localStorage.setItem('ale_saldo',saldo);localStorage.setItem('ale_melhor',melhor)}
+function msg(t,g){$('msg').textContent=t;$('msg').className=g?'ganhou':''}
+function pagar(s){const b=s.find(x=>x!=='🐒');if(!b)return PAGA['🐒'];return s.every(x=>x===b||x==='🐒')?PAGA[b]:0}
+
+async function salvar(){
+  if(!sb||!user)return;
+  await sb.from('profiles').update({saldo,melhor_ganho:melhor,atualizado_em:new Date().toISOString()}).eq('id',user.id);
+}
+
+async function girar(){
+  const bet=BETS[bi];if(girando||saldo<bet)return;
+  girando=true;saldo-=bet;render();msg('Girando…');
+  cells.flat().forEach(c=>c.classList.remove('win'));
+  const g=[0,1,2].map(()=>[0,1,2].map(sorteia));
+  await Promise.all(cells.map((col,c)=>new Promise(ok=>{
+    col.forEach(x=>x.classList.add('roda'));
+    const t=setInterval(()=>col.forEach(x=>x.textContent=sorteia()),70);
+    setTimeout(()=>{clearInterval(t);col.forEach((x,r)=>{x.textContent=g[c][r];x.classList.remove('roda')});ok()},600+c*350);
+  })));
+  let ganho=0;const acesas=new Set();
+  LINHAS.forEach(L=>{const s=[0,1,2].map(c=>g[c][L[c]]);const p=pagar(s);
+    if(p){ganho+=Math.round(p*bet/8);[0,1,2].forEach(c=>acesas.add(c+','+L[c]))}});
+  acesas.forEach(k=>{const[c,r]=k.split(',');cells[c][r].classList.add('win')});
+  saldo+=ganho;
+  if(ganho>melhor)melhor=ganho;
+  msg(ganho?(ganho>=bet*5?'🎉 MACAQUICE! +':'Ganhou +')+ganho+' 🪙':'Quase! Tente de novo.',!!ganho);
+  girando=false;render();salvar();
+}
+
+$('spin').onclick=girar;
+$('minus').onclick=()=>{if(bi>0){bi--;render()}};
+$('plus').onclick=()=>{if(bi<BETS.length-1){bi++;render()}};
+$('free').onclick=()=>{saldo+=500;msg('+500 moedas de presente do miquinho 🍌');render();salvar()};
+
+// Conta e ranking
+function ui(){ $('quem').textContent=user?('Jogando como '+($('nome').value||user.user_metadata?.nome||user.email.split('@')[0])):'Jogando sem login';
+  $('btnLogin').textContent=user?'Conta':'Entrar';$('bSair').hidden=!user}
+async function carregaPerfil(){
+  const{data}=await sb.from('profiles').select('nome,saldo,melhor_ganho').eq('id',user.id).single();
+  if(data){saldo=data.saldo;melhor=data.melhor_ganho;$('quem').textContent='Jogando como '+data.nome;render()}
+}
+$('btnLogin').onclick=()=>{ if(!sb){alert('Login ainda não configurado. Preencha o config.js com os dados do Supabase.');return}
+  $('erro').textContent='';ui();$('dLogin').showModal()};
+$('bFechar').onclick=()=>$('dLogin').close();
+async function auth(criar){
+  $('erro').textContent='';
+  const email=$('email').value.trim(),password=$('senha').value;
+  const r=criar?await sb.auth.signUp({email,password,options:{data:{nome:$('nome').value.trim()||email.split('@')[0]}}}):await sb.auth.signInWithPassword({email,password});
+  if(r.error){$('erro').textContent=r.error.message;return}
+  if(!r.data.session){$('erro').textContent='Confirme o e-mail que enviamos e depois entre.';return}
+  $('dLogin').close();
+}
+$('bEntrar').onclick=()=>auth(false);$('bCriar').onclick=()=>auth(true);
+$('bSair').onclick=async()=>{await sb.auth.signOut();$('dLogin').close()};
+$('btnRank').onclick=async()=>{
+  if(!sb){alert('O ranking precisa do Supabase configurado.');return}
+  const{data,error}=await sb.from('profiles').select('nome,melhor_ganho').order('melhor_ganho',{ascending:false}).limit(10);
+  $('lista').innerHTML=error?'<li>Não deu para carregar.</li>':(data.length?data.map(p=>`<li><span></span><b>${p.melhor_ganho} 🪙</b></li>`).join(''):'<li>Ninguém jogou ainda.</li>');
+  if(data)[...$('lista').children].forEach((li,i)=>li.firstChild.textContent=(i+1)+'. '+data[i].nome);
+  $('dRank').showModal();
+};
+if(sb){
+  sb.auth.onAuthStateChange(async(_e,s)=>{user=s?s.user:null;ui();if(user)await carregaPerfil()});
+  sb.auth.getSession().then(({data})=>{if(data.session){user=data.session.user;carregaPerfil()}});
+}
+if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js'));
+render();
+</script>
+</body>
+</html>
